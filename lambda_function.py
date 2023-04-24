@@ -1,44 +1,35 @@
 import os
-import json
-import boto3
-import requests
+import discord
+from discord.ext import commands, tasks
 
 TOKEN = os.environ['DISCORD_BOT_TOKEN']
+CHANNEL_NAME = os.environ['CHANNEL_NAME']
 
-headers = {
-    'Authorization': f'Bot {TOKEN}'
-}
+intents = discord.Intents.default()
+intents.voice_states = True
 
-api_base_url = 'https://discord.com/api/v10'
+bot = commands.Bot(command_prefix='!', intents=intents)
 
+@bot.event
+async def on_ready():
+    print(f'We have logged in as {bot.user}')
+    monitor_voice_channels.start()
 
-def get_members():
-    members = []
-    response = requests.get(
-        f'{api_base_url}/users/@me/guilds', headers=headers)
-    guilds = response.json()
-    for guild in guilds:
-        guild_id = guild['id']  # extract the guild ID from the guild dictionary
-        # Get the guild's members
-        print(f'guild: {guild_id}')
-        response = requests.get(
-            f'{api_base_url}/guilds/{guild_id}/members?limit=1000', headers=headers)
-        members_data = response.json()
+@tasks.loop(seconds=120)
+async def monitor_voice_channels():
+    for guild in bot.guilds:
+        for channel in guild.voice_channels:
+            if channel.name == CHANNEL_NAME:
+                connected_members = channel.members
+                if connected_members:
+                    print(f'Members connected to {channel.name}:')
+                    for member in connected_members:
+                        print(member)
+                else:
+                    print(f'No members connected to {channel.name}')
 
-        # Append all usernames to the list
-        for member in members_data:
-            members.append(member['user']['username'])
+monitor_voice_channels.before_loop
+async def before_monitor_voice_channels():
+    await bot.wait_until_ready()
 
-    return members
-
-
-def lambda_handler(event, context):
-    members = get_members()
-
-    if members:
-        print(f'Total members in the guild: {len(members)}')
-
-    return {
-        'statusCode': 200,
-        'body': json.dumps(members)
-    }
+bot.run(TOKEN)
