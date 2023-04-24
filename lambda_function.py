@@ -2,6 +2,10 @@ import os
 import discord
 from discord.ext import commands, tasks
 
+import sys
+sys.path.append("/opt/python-modules")
+import asyncio
+
 TOKEN = os.environ['DISCORD_BOT_TOKEN']
 CHANNEL_NAME = os.environ['CHANNEL_NAME']
 
