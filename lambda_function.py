@@ -1,9 +1,9 @@
 import os
 import discord
 from discord.ext import commands, tasks
-import boto3
-import json
 import asyncio
+import json
+import boto3
 
 import sys
 sys.path.append("/opt/python-modules")
@@ -17,13 +17,14 @@ intents.voice_states = True
 
 bot = discord.Client(intents=intents)
 
+# Initialize the Lambda client
+lambda_client = boto3.client('lambda')
+
 @bot.event
 async def on_ready():
     print(f'We have logged in as {bot.user}')
-    monitor_voice_channels.start()
-    await stop_bot()
+    await monitor_voice_channels()
 
-@tasks.loop(seconds=5)
 async def monitor_voice_channels():
     for guild in bot.guilds:
         for channel in guild.voice_channels:
@@ -31,37 +32,40 @@ async def monitor_voice_channels():
                 connected_members = channel.members
                 if connected_members:
                     print(f'Members Are connected to {channel.name}')
+                    # Invoke Lambda function
                     await invoke_lambda_start()
                 else:
                     print(f'No members connected to {channel.name}')
                     await invoke_lambda_stop()
-                    
-    monitor_voice_channels.stop()
+
+async def invoke_lambda_start():
+    payload = {
+        "action": "start"
+    }
+    lambda_client.invoke(
+        FunctionName=FUNCTION_ARN,
+        InvocationType='Event',
+        Payload=json.dumps(payload)
+    )
+
+async def invoke_lambda_stop():
+    payload = {
+        "action": "stop"
+    }
+    lambda_client.invoke(
+        FunctionName=FUNCTION_ARN,
+        InvocationType='Event',
+        Payload=json.dumps(payload)
+    )
 
 async def stop_bot():
     print("Stopping bot...")
     await bot.close()
 
-monitor_voice_channels.before_loop
-async def before_monitor_voice_channels():
-    await bot.wait_until_ready()
-
-async def invoke_lambda_start():
-    print("Attempting start")
-    client = boto3.client('lambda')
-    payload = {"action": "start"}
-    response = await client.invoke(FunctionName=FUNCTION_ARN, Payload=json.dumps(payload))  
-    return response
-
-async def invoke_lambda_stop():
-    print("Attempting stop")
-    client = boto3.client('lambda')
-    payload = '{"action": "stop"}'
-    response = await client.invoke(FunctionName=FUNCTION_ARN, Payload=payload)
-    return response
-
-
 async def main():
     await bot.start(TOKEN)
 
-asyncio.run(main())
+# AWS Lambda handler
+def lambda_handler(event, context):
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
